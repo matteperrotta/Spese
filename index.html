@@ -1163,6 +1163,7 @@ body.noscroll { overflow: hidden; }
 
   // ---------- microfono ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   let rec = null, listening = false, heard = "";
   function setListening(on) {
     listening = on;
@@ -1173,7 +1174,9 @@ body.noscroll { overflow: hidden; }
     showErr("quickErr", "");
     if (listening && rec) { rec.stop(); return; }
     if (!SR) {
-      micHint("Questo browser non supporta la dettatura. Apri l'app con Chrome, oppure usa il microfono della tastiera nel campo qui sotto.");
+      micHint(IOS
+        ? "Su iPhone detta con la tastiera: tocca il microfono in basso sulla tastiera che si è aperta, dì le spese, poi tocca Leggi spese."
+        : "Questo browser non supporta la dettatura. Apri l'app con Chrome, oppure usa il microfono della tastiera nel campo qui sotto.");
       $("quickText").focus(); return;
     }
     const base = $("quickText").value.trim();
@@ -1187,7 +1190,10 @@ body.noscroll { overflow: hidden; }
       $("quickText").value = (base ? base + ", " : "") + heard;
     };
     rec.onerror = ev => {
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") micHint("Il microfono è bloccato. Tocca il lucchetto accanto all'indirizzo (o Impostazioni del sito) e consenti il microfono, poi riprova.");
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        if (IOS) { micHint("Su iPhone detta con la tastiera: tocca il microfono in basso sulla tastiera, dì le spese, poi tocca Leggi spese."); $("quickText").focus(); }
+        else micHint("Il microfono è bloccato. Tocca il lucchetto accanto all'indirizzo (o Impostazioni del sito) e consenti il microfono, poi riprova.");
+      }
       else if (ev.error === "no-speech") micHint("Non ho sentito nulla. Tocca di nuovo e parla vicino al telefono.");
       else if (ev.error === "network") micHint("La dettatura di Chrome richiede internet. Collegati e riprova, oppure scrivi la spesa.");
       else if (ev.error !== "aborted") micHint("La dettatura si è interrotta. Riprova.");
@@ -1199,7 +1205,11 @@ body.noscroll { overflow: hidden; }
     try {
       rec.start(); setListening(true);
       micHint("Ti ascolto. Per esempio: \"ieri pizzeria 38 euro, oggi supermercato 62 e 40\". Poi tocca Ho finito.");
-    } catch (e) { rec = null; setListening(false); micHint("Non riesco ad avviare il microfono. Riprova."); }
+    } catch (e) {
+      rec = null; setListening(false);
+      micHint(IOS ? "Su iPhone detta con la tastiera: tocca il microfono in basso sulla tastiera, dì le spese, poi tocca Leggi spese." : "Non riesco ad avviare il microfono. Riprova.");
+      if (IOS) $("quickText").focus();
+    }
   });
 
   // ---------- revisione prima di salvare ----------
@@ -1284,7 +1294,7 @@ body.noscroll { overflow: hidden; }
   });
 
   // ---------- aggiornamento dell'app ----------
-  const APP_VERSION = "1.1";
+  const APP_VERSION = "1.2";
   $("appVersion").textContent = "Versione " + APP_VERSION;
   async function checkUpdate(manual) {
     const btn = $("updateBtn");
