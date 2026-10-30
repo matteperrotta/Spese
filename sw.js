@@ -1,7 +1,7 @@
 // Fa funzionare l'app anche senza connessione: tiene in memoria la pagina e,
 // dopo il primo uso, il lettore di scontrini e i caratteri.
-const CACHE = "spese-v1";
-const CORE = ["./", "index.html", "parse.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const CACHE = "spese-app-v2";
+const CORE = ["./", "index.html", "parse.js", "version.json", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
