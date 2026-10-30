@@ -85,6 +85,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.1rem; margin:
 .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
 .status[data-mode="db"]::before { background: var(--c-spesa); }
 .status[data-mode="local"]::before { background: var(--accent); }
+.status[data-mode="warn"]::before { background: var(--c-pasti); }
+.share-code { display: block; font-size: 1.05rem; letter-spacing: 0.04em; padding: 12px; border-radius: 10px; background: var(--bg); border: 1px dashed var(--line); text-align: center; user-select: all; -webkit-user-select: all; word-break: break-all; }
 
 .month { display: flex; flex-direction: column; gap: 4px; }
 .month-nav { display: flex; align-items: center; gap: 8px; }
@@ -444,6 +446,33 @@ body.noscroll { overflow: hidden; }
     <h2>Settimana per settimana</h2>
     <div class="weeks" id="weeks"></div>
 
+    <section class="card" id="shareCard" aria-labelledby="shareTitle" hidden>
+      <div>
+        <h2 id="shareTitle">Condivisione</h2>
+        <p class="sub">Collega due telefoni: tutti e due inserite le spese e vedete la stessa lista aggiornata.</p>
+      </div>
+      <div id="shareOff" class="field" style="gap:12px">
+        <button class="primary" id="shareCreate" type="button">Crea codice di coppia</button>
+        <p class="hint">Lo crea uno solo dei due. Le spese già inserite su questo telefono vengono condivise.</p>
+        <form id="shareJoinForm" class="cat-add" novalidate>
+          <div class="field"><label for="shareJoinCode">Hai già un codice?</label><input id="shareJoinCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></div>
+          <button class="secondary" type="submit">Entra</button>
+        </form>
+        <p class="err" id="shareErr" hidden></p>
+      </div>
+      <div id="shareOn" class="field" style="gap:12px" hidden>
+        <span class="label">Codice di coppia</span>
+        <code class="share-code num" id="shareCode"></code>
+        <div class="backup-actions">
+          <button class="primary" id="shareSend" type="button">Invia codice</button>
+          <button class="secondary" id="shareCopy" type="button">Copia</button>
+        </div>
+        <p class="hint">Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in "Hai già un codice?" e tocca Entra.</p>
+        <button class="secondary" id="shareNow" type="button">Aggiorna adesso</button>
+        <button class="danger-link" id="shareLeave" type="button">Smetti di condividere</button>
+      </div>
+    </section>
+
     <section class="card" aria-labelledby="catTitle">
       <div>
         <h2 id="catTitle">Categorie</h2>
@@ -593,9 +622,9 @@ body.noscroll { overflow: hidden; }
     custom = (readLS(LS_CATS) || []).filter(x => x && x.k && x.l);
     rebuildCats();
   }
-  const saveItems = () => writeLS(LS_ITEMS, [...items.values()]);
-  const saveFixed = () => { fixed = normFixed(fixed); writeLS(LS_FIXED, fixed); };
-  const saveCats = () => { writeLS(LS_CATS, custom); rebuildCats(); };
+  const saveItems = () => { writeLS(LS_ITEMS, [...items.values()]); scheduleSync(); };
+  const saveFixed = () => { fixed = normFixed(fixed); writeLS(LS_FIXED, fixed); scheduleSync(); };
+  const saveCats = () => { writeLS(LS_CATS, custom); rebuildCats(); scheduleSync(); };
 
   // ---------- mesi ----------
   const keyOf = (y, m) => `${y}-${pad(m + 1)}`;
@@ -1293,8 +1322,178 @@ body.noscroll { overflow: hidden; }
     } catch (e) { toast("Questo file non è un backup delle spese."); }
   });
 
+  // ---------- condivisione tra due telefoni (Supabase) ----------
+  const SB_URL = "https://wncldllbeesplnuhvegl.supabase.co";
+  const SB_KEY = "sb_publishable_JPH3MR2yB5fSbBpCfQMrGw_lQt4-dwE";
+  const SYNC_ON = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(SB_URL) && SB_KEY.length > 20;
+  const LS_SYNC = "spese-mensili-sync-v1";
+  const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let sync = Object.assign({ code: null, cursor: null, synced: {} }, readLS(LS_SYNC) || {});
+  let syncTimer = null, syncing = false, syncAgain = false, syncState = "idle";
+  const saveSync = () => { try { localStorage.setItem(LS_SYNC, JSON.stringify(sync)); } catch (e) {} };
+
+  function stable(v) {
+    if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
+    if (v && typeof v === "object") return "{" + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ":" + stable(v[k])).join(",") + "}";
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function localRecords() {
+    const out = {};
+    for (const [id, r] of items) out["i:" + id] = r;
+    for (const f of fixed) out["f:" + f.id] = f;
+    for (const c of custom) out["c:" + c.k] = c;
+    return out;
+  }
+  const fmtCode = c => c.match(/.{1,4}/g).join("-");
+  const normCode = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  function newCode() {
+    const b = new Uint8Array(24); crypto.getRandomValues(b);
+    return [...b].map(x => ALPHA[x % ALPHA.length]).join("");
+  }
+
+  async function rpc(fn, body) {
+    const h = { "Content-Type": "application/json", apikey: SB_KEY };
+    if (!SB_KEY.startsWith("sb_")) h.Authorization = "Bearer " + SB_KEY;
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method: "POST", headers: h, body: JSON.stringify(body), cache: "no-store" });
+    if (!r.ok) { const e = new Error("http " + r.status); e.status = r.status; throw e; }
+    const t = await r.text();
+    return t ? JSON.parse(t) : null;
+  }
+
+  function setSyncState(st) {
+    syncState = st;
+    const s = $("status");
+    const txt = !sync.code ? "Salvato su questo telefono"
+      : st === "busy" ? "Sincronizzo…"
+      : st === "offline" ? "Offline: invio appena c'è rete"
+      : st === "error" ? "Sincronizzazione non riuscita"
+      : "Condiviso e aggiornato";
+    s.textContent = txt;
+    s.dataset.mode = !sync.code ? "local" : st === "ok" ? "db" : st === "busy" ? "local" : "warn";
+  }
+
+  function scheduleSync(delay) {
+    if (!SYNC_ON || !sync.code) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(runSync, delay == null ? 1200 : delay);
+  }
+
+  function applyRemote(rows) {
+    let changed = false;
+    for (const row of rows) {
+      const key = row.chiave, kind = key.slice(0, 2), id = key.slice(2);
+      const d = row.dati;
+      if (row.cancellato || !d) {
+        if (kind === "i:" && items.has(id)) { items.delete(id); changed = true; }
+        if (kind === "f:" && fixed.some(f => f.id === id)) { fixed = fixed.filter(f => f.id !== id); changed = true; }
+        if (kind === "c:" && custom.some(c => c.k === id)) { custom = custom.filter(c => c.k !== id); changed = true; }
+        delete sync.synced[key];
+        continue;
+      }
+      const js = stable(d);
+      if (kind === "i:") { if (stable(items.get(id) || null) !== js) { items.set(id, d); changed = true; } }
+      else if (kind === "f:") {
+        const i = fixed.findIndex(f => f.id === id);
+        if (i < 0) { fixed.push(d); changed = true; } else if (stable(fixed[i]) !== js) { fixed[i] = d; changed = true; }
+      } else if (kind === "c:") {
+        const i = custom.findIndex(c => c.k === id);
+        if (i < 0) { custom.push(d); changed = true; } else if (stable(custom[i]) !== js) { custom[i] = d; changed = true; }
+      }
+      sync.synced[key] = js;
+      if (!sync.cursor || row.aggiornato > sync.cursor) sync.cursor = row.aggiornato;
+    }
+    return changed;
+  }
+
+  async function runSync() {
+    if (!SYNC_ON || !sync.code) return;
+    if (syncing) { syncAgain = true; return; }
+    if (navigator.onLine === false) { setSyncState("offline"); return; }
+    syncing = true; setSyncState("busy");
+    try {
+      // 1. invia ciò che è cambiato su questo telefono
+      const now = Date.now(), recs = localRecords(), out = [];
+      for (const [key, r] of Object.entries(recs)) {
+        const js = stable(r);
+        if (sync.synced[key] !== js) out.push({ chiave: key, dati: r, cancellato: false, modificato: now, _js: js });
+      }
+      for (const key of Object.keys(sync.synced)) if (!(key in recs)) out.push({ chiave: key, dati: null, cancellato: true, modificato: now });
+      for (let i = 0; i < out.length; i += 200) {
+        const part = out.slice(i, i + 200);
+        await rpc("spese_scrivi", { p_gruppo: sync.code, p_righe: part.map(({ _js, ...x }) => x) });
+        for (const x of part) { if (x.cancellato) delete sync.synced[x.chiave]; else sync.synced[x.chiave] = x._js; }
+      }
+      // 2. ricevi ciò che è cambiato sull'altro telefono
+      const since = sync.cursor ? new Date(new Date(String(sync.cursor).replace(/(\.\d{3})\d+/, "$1")).getTime() - 120000).toISOString() : null;
+      const rows = await rpc("spese_leggi", { p_gruppo: sync.code, p_dopo: since }) || [];
+      const changed = applyRemote(rows);
+      saveSync();
+      if (changed) {
+        writeLS(LS_ITEMS, [...items.values()]); fixed = normFixed(fixed); writeLS(LS_FIXED, fixed); writeLS(LS_CATS, custom);
+        rebuildCats(); renderCatPick(); render();
+      }
+      setSyncState("ok");
+      renderShare();
+    } catch (e) {
+      setSyncState(navigator.onLine === false || !e.status ? "offline" : "error");
+    } finally {
+      syncing = false;
+      if (syncAgain) { syncAgain = false; scheduleSync(300); }
+    }
+  }
+
+  function renderShare() {
+    const card = $("shareCard");
+    card.hidden = !SYNC_ON;
+    if (!SYNC_ON) return;
+    $("shareOff").hidden = !!sync.code;
+    $("shareOn").hidden = !sync.code;
+    if (sync.code) $("shareCode").textContent = fmtCode(sync.code);
+  }
+
+  $("shareCreate").addEventListener("click", async () => {
+    sync = { code: newCode(), cursor: null, synced: {} }; saveSync();
+    renderShare(); setSyncState("busy");
+    await runSync();
+    toast(syncState === "ok" ? "Codice creato: ora mandalo all'altra persona" : "Codice creato: le spese verranno inviate appena c'è rete");
+  });
+  $("shareJoinForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const code = normCode($("shareJoinCode").value);
+    if (code.length !== 24) { showErr("shareErr", "Il codice ha 24 caratteri, nel formato XXXX-XXXX-XXXX-XXXX-XXXX-XXXX. Controlla e riprova."); return; }
+    showErr("shareErr", "");
+    sync = { code, cursor: null, synced: {} }; saveSync();
+    $("shareJoinCode").value = "";
+    renderShare();
+    await runSync();
+    toast(syncState === "ok" ? "Collegato: ora vedete le stesse spese" : "Collegato: le spese arriveranno appena c'è rete");
+  });
+  $("shareCopy").addEventListener("click", async () => {
+    const t = fmtCode(sync.code);
+    try { await navigator.clipboard.writeText(t); toast("Codice copiato"); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($("shareCode")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Tieni premuto sul codice per copiarlo"); }
+  });
+  $("shareSend").addEventListener("click", async () => {
+    const t = `Codice per le spese condivise: ${fmtCode(sync.code)}\nApri l'app Spese → Condivisione → Hai già un codice? e incollalo.\nSe non hai ancora l'app: https://matteperrotta.github.io/Spese/`;
+    if (navigator.share) { try { await navigator.share({ text: t }); } catch (e) {} }
+    else { try { await navigator.clipboard.writeText(t); toast("Messaggio copiato: incollalo su WhatsApp"); } catch (e) {} }
+  });
+  $("shareNow").addEventListener("click", () => runSync());
+  let leaveArmed = false;
+  $("shareLeave").addEventListener("click", () => {
+    const b = $("shareLeave");
+    if (!leaveArmed) { leaveArmed = true; b.textContent = "Tocca di nuovo: le spese restano su questo telefono"; b.classList.add("armed"); setTimeout(() => { leaveArmed = false; b.textContent = "Smetti di condividere"; b.classList.remove("armed"); }, 4000); return; }
+    sync = { code: null, cursor: null, synced: {} }; saveSync();
+    leaveArmed = false; b.textContent = "Smetti di condividere"; b.classList.remove("armed");
+    renderShare(); setSyncState("idle"); toast("Condivisione interrotta su questo telefono");
+  });
+
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleSync(200); });
+  window.addEventListener("online", () => scheduleSync(200));
+  setInterval(() => { if (document.visibilityState === "visible") runSync(); }, 20000);
+
   // ---------- aggiornamento dell'app ----------
-  const APP_VERSION = "1.2";
+  const APP_VERSION = "1.3";
   $("appVersion").textContent = "Versione " + APP_VERSION;
   async function checkUpdate(manual) {
     const btn = $("updateBtn");
@@ -1335,6 +1534,7 @@ body.noscroll { overflow: hidden; }
   syncDate();
   view = location.hash === "#analisi" ? "analisi" : "registro";
   render();
+  renderShare(); setSyncState("idle"); scheduleSync(300);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
   setTimeout(() => checkUpdate(false), 1500);
