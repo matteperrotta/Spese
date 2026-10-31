@@ -117,6 +117,18 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.1rem; margin:
 .cat-val small { color: var(--muted); font-size: 0.75rem; margin-left: 4px; }
 
 /* Schede */
+#shareActions:has(#shareSend[hidden]) { grid-template-columns: 1fr; }
+.space-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.space-tabs button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 12px; border-radius: 12px;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); font-weight: 600; text-align: left; cursor: pointer;
+}
+.space-tabs button small { font-weight: 400; font-size: 0.78rem; }
+.space-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.space-tabs button[aria-pressed="true"] small { color: var(--accent); }
+body[data-space="personali"] { --accent: #3B4FA8; --accent-ink: #FFFFFF; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body[data-space="personali"] { --accent: #93A6F0; --accent-ink: #0F1630; } }
+:root[data-theme="dark"] body[data-space="personali"] { --accent: #93A6F0; --accent-ink: #0F1630; }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--line) 70%, transparent); }
 .tabs a { text-align: center; text-decoration: none; color: var(--muted); font-weight: 600; padding: 9px 8px; border-radius: 9px; }
 .tabs a[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent); }
@@ -337,13 +349,18 @@ body.noscroll { overflow: hidden; }
     <div class="status" id="status" data-mode="local">Salvato su questo telefono</div>
   </div>
 
+  <div class="space-tabs" role="group" aria-label="Sezione">
+    <button type="button" id="sp-coppia" aria-pressed="true">Di coppia<small id="sp-coppia-tot">&nbsp;</small></button>
+    <button type="button" id="sp-personali" aria-pressed="false">Personali<small id="sp-personali-tot">&nbsp;</small></button>
+  </div>
+
   <section class="month" aria-label="Riepilogo del mese">
     <div class="month-nav">
       <button class="icon-btn" id="prev" type="button" aria-label="Mese precedente">‹</button>
       <h1 id="monthLabel">—</h1>
       <button class="icon-btn" id="next" type="button" aria-label="Mese successivo">›</button>
     </div>
-    <div class="label">Totale del mese</div>
+    <div class="label" id="totLabel">Totale del mese</div>
     <div class="total" id="monthTotal">€ 0,00</div>
     <div class="split" id="monthSplit"></div>
   </section>
@@ -449,26 +466,31 @@ body.noscroll { overflow: hidden; }
     <section class="card" id="shareCard" aria-labelledby="shareTitle" hidden>
       <div>
         <h2 id="shareTitle">Condivisione</h2>
-        <p class="sub">Collega due telefoni: tutti e due inserite le spese e vedete la stessa lista aggiornata.</p>
+        <p class="sub" id="shareIntro">Collega due telefoni: tutti e due inserite le spese e vedete la stessa lista aggiornata.</p>
       </div>
       <div id="shareOff" class="field" style="gap:12px">
         <button class="primary" id="shareCreate" type="button">Crea codice di coppia</button>
-        <p class="hint">Lo crea uno solo dei due. Le spese già inserite su questo telefono vengono condivise.</p>
+        <p class="hint" id="shareCreateHint">Lo crea uno solo dei due. Le spese già inserite su questo telefono vengono condivise.</p>
         <form id="shareJoinForm" class="cat-add" novalidate>
-          <div class="field"><label for="shareJoinCode">Hai già un codice?</label><input id="shareJoinCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></div>
+          <div class="field"><label for="shareJoinCode" id="shareJoinLabel">Hai già un codice?</label><input id="shareJoinCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></div>
           <button class="secondary" type="submit">Entra</button>
         </form>
         <p class="err" id="shareErr" hidden></p>
       </div>
       <div id="shareOn" class="field" style="gap:12px" hidden>
-        <span class="label">Codice di coppia</span>
+        <span class="label" id="shareCodeLabel">Codice di coppia</span>
         <code class="share-code num" id="shareCode"></code>
-        <div class="backup-actions">
+        <div class="backup-actions" id="shareActions">
           <button class="primary" id="shareSend" type="button">Invia codice</button>
           <button class="secondary" id="shareCopy" type="button">Copia</button>
         </div>
-        <p class="hint">Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in "Hai già un codice?" e tocca Entra.</p>
+        <p class="hint" id="shareOnHint">Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in "Hai già un codice?" e tocca Entra.</p>
         <button class="secondary" id="shareNow" type="button">Aggiorna adesso</button>
+        <form id="recoverForm" class="cat-add" novalidate hidden>
+          <div class="field"><label for="recoverCode">Hai un codice di recupero da un altro telefono?</label><input id="recoverCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></div>
+          <button class="secondary" type="submit">Usa</button>
+        </form>
+        <p class="err" id="recoverErr" hidden></p>
         <button class="danger-link" id="shareLeave" type="button">Smetti di condividere</button>
       </div>
     </section>
@@ -492,7 +514,7 @@ body.noscroll { overflow: hidden; }
     <section class="card" aria-labelledby="bkTitle">
       <div>
         <h2 id="bkTitle">Backup</h2>
-        <p class="sub">Le spese sono salvate solo su questo telefono. Ogni tanto salva un backup: se cambi telefono o cancelli i dati del browser, lo ripristini da qui.</p>
+        <p class="sub" id="bkIntro">Salva in un file le spese della sezione aperta. Se cambi telefono o cancelli i dati del browser, le ripristini da qui.</p>
       </div>
       <div class="backup-actions">
         <button class="secondary" id="exportBtn" type="button">Salva backup</button>
@@ -597,9 +619,18 @@ body.noscroll { overflow: hidden; }
   const fmt = c => eur.format(c / 100);
   const fmt0 = c => eur0.format(Math.round(c / 100));
   const pad = n => String(n).padStart(2, "0");
-  const LS_ITEMS = "spese-mensili-v1";
-  const LS_FIXED = "spese-mensili-fisse-v1";
-  const LS_CATS = "spese-mensili-categorie-v1";
+  // Due sezioni separate: "coppia" (condivisa) e "personali" (privata di chi usa il telefono)
+  const LS_SPACE = "spese-mensili-sezione";
+  let space = (() => { try { return localStorage.getItem(LS_SPACE) === "personali" ? "personali" : "coppia"; } catch (e) { return "coppia"; } })();
+  let LS_ITEMS, LS_FIXED, LS_CATS, LS_SYNC;
+  function setKeys() {
+    const sfx = space === "personali" ? "-personali" : "";
+    LS_ITEMS = "spese-mensili-v1" + sfx;
+    LS_FIXED = "spese-mensili-fisse-v1" + sfx;
+    LS_CATS = "spese-mensili-categorie-v1" + sfx;
+    LS_SYNC = "spese-mensili-sync-v1" + sfx;
+  }
+  setKeys();
 
   const $ = id => document.getElementById(id);
   const today = new Date();
@@ -686,6 +717,7 @@ body.noscroll { overflow: hidden; }
 
   // ---------- render comune ----------
   function render() {
+    renderSpace();
     const key = keyOf(viewY, viewM);
     const st = stats(key);
     $("monthLabel").textContent = `${cap(MESI[viewM])} ${viewY}`;
@@ -1295,10 +1327,10 @@ body.noscroll { overflow: hidden; }
 
   // ---------- backup ----------
   $("exportBtn").addEventListener("click", () => {
-    const data = { app: "spese-mensili", version: 1, exportedAt: new Date().toISOString(), items: [...items.values()], fixed, categories: custom };
+    const data = { app: "spese-mensili", version: 1, sezione: space, exportedAt: new Date().toISOString(), items: [...items.values()], fixed, categories: custom };
     const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = `backup-spese-${todayStr}.json`;
+    a.href = URL.createObjectURL(blob); a.download = `backup-spese-${space === "personali" ? "personali" : "coppia"}-${todayStr}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast("Backup salvato nei Download");
@@ -1326,9 +1358,9 @@ body.noscroll { overflow: hidden; }
   const SB_URL = "https://wncldllbeesplnuhvegl.supabase.co";
   const SB_KEY = "sb_publishable_JPH3MR2yB5fSbBpCfQMrGw_lQt4-dwE";
   const SYNC_ON = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(SB_URL) && SB_KEY.length > 20;
-  const LS_SYNC = "spese-mensili-sync-v1";
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let sync = Object.assign({ code: null, cursor: null, synced: {} }, readLS(LS_SYNC) || {});
+  const loadSync = () => Object.assign({ code: null, cursor: null, synced: {} }, readLS(LS_SYNC) || {});
+  let sync = loadSync();
   let syncTimer = null, syncing = false, syncAgain = false, syncState = "idle";
   const saveSync = () => { try { localStorage.setItem(LS_SYNC, JSON.stringify(sync)); } catch (e) {} };
 
@@ -1367,7 +1399,7 @@ body.noscroll { overflow: hidden; }
       : st === "busy" ? "Sincronizzo…"
       : st === "offline" ? "Offline: invio appena c'è rete"
       : st === "error" ? "Sincronizzazione non riuscita"
-      : "Condiviso e aggiornato";
+      : space === "personali" ? "Salvato online, privato" : "Condiviso e aggiornato";
     s.textContent = txt;
     s.dataset.mode = !sync.code ? "local" : st === "ok" ? "db" : st === "busy" ? "local" : "warn";
   }
@@ -1409,23 +1441,27 @@ body.noscroll { overflow: hidden; }
     if (!SYNC_ON || !sync.code) return;
     if (syncing) { syncAgain = true; return; }
     if (navigator.onLine === false) { setSyncState("offline"); return; }
+    // la sezione può cambiare mentre si aspetta il server: si lavora sempre su quella di partenza
+    const sp = space, st = sync, stKey = LS_SYNC;
     syncing = true; setSyncState("busy");
     try {
       // 1. invia ciò che è cambiato su questo telefono
       const now = Date.now(), recs = localRecords(), out = [];
       for (const [key, r] of Object.entries(recs)) {
         const js = stable(r);
-        if (sync.synced[key] !== js) out.push({ chiave: key, dati: r, cancellato: false, modificato: now, _js: js });
+        if (st.synced[key] !== js) out.push({ chiave: key, dati: r, cancellato: false, modificato: now, _js: js });
       }
-      for (const key of Object.keys(sync.synced)) if (!(key in recs)) out.push({ chiave: key, dati: null, cancellato: true, modificato: now });
+      for (const key of Object.keys(st.synced)) if (!(key in recs)) out.push({ chiave: key, dati: null, cancellato: true, modificato: now });
       for (let i = 0; i < out.length; i += 200) {
         const part = out.slice(i, i + 200);
-        await rpc("spese_scrivi", { p_gruppo: sync.code, p_righe: part.map(({ _js, ...x }) => x) });
-        for (const x of part) { if (x.cancellato) delete sync.synced[x.chiave]; else sync.synced[x.chiave] = x._js; }
+        await rpc("spese_scrivi", { p_gruppo: st.code, p_righe: part.map(({ _js, ...x }) => x) });
+        for (const x of part) { if (x.cancellato) delete st.synced[x.chiave]; else st.synced[x.chiave] = x._js; }
       }
+      if (space !== sp) { try { localStorage.setItem(stKey, JSON.stringify(st)); } catch (e) {} return; }
       // 2. ricevi ciò che è cambiato sull'altro telefono
-      const since = sync.cursor ? new Date(new Date(String(sync.cursor).replace(/(\.\d{3})\d+/, "$1")).getTime() - 120000).toISOString() : null;
-      const rows = await rpc("spese_leggi", { p_gruppo: sync.code, p_dopo: since }) || [];
+      const since = st.cursor ? new Date(new Date(String(st.cursor).replace(/(\.\d{3})\d+/, "$1")).getTime() - 120000).toISOString() : null;
+      const rows = await rpc("spese_leggi", { p_gruppo: st.code, p_dopo: since }) || [];
+      if (space !== sp) { try { localStorage.setItem(stKey, JSON.stringify(st)); } catch (e) {} return; }
       const changed = applyRemote(rows);
       saveSync();
       if (changed) {
@@ -1435,7 +1471,7 @@ body.noscroll { overflow: hidden; }
       setSyncState("ok");
       renderShare();
     } catch (e) {
-      setSyncState(navigator.onLine === false || !e.status ? "offline" : "error");
+      if (space === sp) setSyncState(navigator.onLine === false || !e.status ? "offline" : "error");
     } finally {
       syncing = false;
       if (syncAgain) { syncAgain = false; scheduleSync(300); }
@@ -1446,16 +1482,51 @@ body.noscroll { overflow: hidden; }
     const card = $("shareCard");
     card.hidden = !SYNC_ON;
     if (!SYNC_ON) return;
+    const pers = space === "personali";
+    $("shareTitle").textContent = pers ? "Salvataggio online" : "Condivisione";
+    $("shareIntro").textContent = pers
+      ? "Le spese personali sono salvate online in modo privato: le vedi solo tu, da questo telefono. Il codice qui sotto serve per ritrovarle se cambi telefono."
+      : "Collega due telefoni: tutti e due inserite le spese e vedete la stessa lista aggiornata.";
+    $("shareCreate").textContent = pers ? "Attiva salvataggio online" : "Crea codice di coppia";
+    $("shareCreateHint").textContent = pers ? "Le spese personali restano visibili solo a te." : "Lo crea uno solo dei due. Le spese già inserite su questo telefono vengono condivise.";
+    $("shareJoinLabel").textContent = pers ? "Hai un codice di recupero?" : "Hai già un codice?";
+    $("shareCodeLabel").textContent = pers ? "Codice di recupero (tienilo per te)" : "Codice di coppia";
+    $("shareSend").hidden = pers;
+    $("shareOnHint").textContent = pers
+      ? "Salvalo in un posto sicuro, per esempio in una nota. Non mandarlo a nessuno: chi lo ha può vedere le tue spese personali."
+      : "Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in \"Hai già un codice?\" e tocca Entra.";
+    $("recoverForm").hidden = !pers;
+    $("shareLeave").hidden = pers;
     $("shareOff").hidden = !!sync.code;
     $("shareOn").hidden = !sync.code;
     if (sync.code) $("shareCode").textContent = fmtCode(sync.code);
   }
 
+  // le spese personali vengono salvate online in automatico, con un codice privato
+  function ensurePersonalCode() {
+    if (!SYNC_ON || space !== "personali" || sync.code) return;
+    sync = { code: newCode(), cursor: null, synced: {} }; saveSync();
+  }
+
+  $("recoverForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const code = normCode($("recoverCode").value);
+    if (code.length !== 24) { showErr("recoverErr", "Il codice ha 24 caratteri, nel formato XXXX-XXXX-XXXX-XXXX-XXXX-XXXX. Controlla e riprova."); return; }
+    if (code === sync.code) { showErr("recoverErr", "Questo è già il codice in uso su questo telefono."); return; }
+    showErr("recoverErr", "");
+    sync = { code, cursor: null, synced: {} }; saveSync();
+    $("recoverCode").value = "";
+    renderShare();
+    await runSync();
+    toast(syncState === "ok" ? "Spese personali recuperate" : "Codice salvato: le spese arriveranno appena c'è rete");
+  });
+
   $("shareCreate").addEventListener("click", async () => {
     sync = { code: newCode(), cursor: null, synced: {} }; saveSync();
     renderShare(); setSyncState("busy");
     await runSync();
-    toast(syncState === "ok" ? "Codice creato: ora mandalo all'altra persona" : "Codice creato: le spese verranno inviate appena c'è rete");
+    if (space === "personali") toast(syncState === "ok" ? "Salvataggio online attivo" : "Attivo: le spese verranno salvate appena c'è rete");
+    else toast(syncState === "ok" ? "Codice creato: ora mandalo all'altra persona" : "Codice creato: le spese verranno inviate appena c'è rete");
   });
   $("shareJoinForm").addEventListener("submit", async ev => {
     ev.preventDefault();
@@ -1466,7 +1537,8 @@ body.noscroll { overflow: hidden; }
     $("shareJoinCode").value = "";
     renderShare();
     await runSync();
-    toast(syncState === "ok" ? "Collegato: ora vedete le stesse spese" : "Collegato: le spese arriveranno appena c'è rete");
+    if (space === "personali") toast(syncState === "ok" ? "Spese personali recuperate" : "Codice salvato: le spese arriveranno appena c'è rete");
+    else toast(syncState === "ok" ? "Collegato: ora vedete le stesse spese" : "Collegato: le spese arriveranno appena c'è rete");
   });
   $("shareCopy").addEventListener("click", async () => {
     const t = fmtCode(sync.code);
@@ -1492,8 +1564,41 @@ body.noscroll { overflow: hidden; }
   window.addEventListener("online", () => scheduleSync(200));
   setInterval(() => { if (document.visibilityState === "visible") runSync(); }, 20000);
 
+  // ---------- sezioni: di coppia / personali ----------
+  function monthTotalOf(sfx, key) {
+    const it = readLS("spese-mensili-v1" + sfx) || [], fx = readLS("spese-mensili-fisse-v1" + sfx) || [];
+    let t = 0;
+    for (const i of it) if (i && i.month === key && typeof i.cents === "number") t += i.cents;
+    for (const f of fx) if (f && f.from <= key && (!f.to || f.to >= key) && typeof f.cents === "number") t += f.cents;
+    return t;
+  }
+  function renderSpace() {
+    document.body.dataset.space = space;
+    $("sp-coppia").setAttribute("aria-pressed", space === "coppia" ? "true" : "false");
+    $("sp-personali").setAttribute("aria-pressed", space === "personali" ? "true" : "false");
+    const key = keyOf(viewY, viewM), m = MESI[viewM];
+    $("sp-coppia-tot").textContent = `${fmt(monthTotalOf("", key))} a ${m}`;
+    $("sp-personali-tot").textContent = `${fmt(monthTotalOf("-personali", key))} a ${m}`;
+    $("totLabel").textContent = space === "personali" ? "Le mie spese del mese" : "Spese di coppia del mese";
+    const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = space === "personali" ? "#3B4FA8" : "#14634F";
+  }
+  function switchSpace(s) {
+    if (s === space) return;
+    clearTimeout(syncTimer);
+    space = s;
+    try { localStorage.setItem(LS_SPACE, s); } catch (e) {}
+    setKeys(); loadLocal(); sync = loadSync(); ensurePersonalCode();
+    draft = []; renderReview(); showErr("quickErr", "");
+    renderCatPick(); render(); renderShare(); setSyncState("idle");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast(s === "personali" ? "Spese personali: le vedi solo tu" : "Spese di coppia");
+    scheduleSync(200);
+  }
+  $("sp-coppia").addEventListener("click", () => switchSpace("coppia"));
+  $("sp-personali").addEventListener("click", () => switchSpace("personali"));
+
   // ---------- aggiornamento dell'app ----------
-  const APP_VERSION = "1.3";
+  const APP_VERSION = "1.4";
   $("appVersion").textContent = "Versione " + APP_VERSION;
   async function checkUpdate(manual) {
     const btn = $("updateBtn");
@@ -1534,6 +1639,7 @@ body.noscroll { overflow: hidden; }
   syncDate();
   view = location.hash === "#analisi" ? "analisi" : "registro";
   render();
+  ensurePersonalCode();
   renderShare(); setSyncState("idle"); scheduleSync(300);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
