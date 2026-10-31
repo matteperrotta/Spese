@@ -118,6 +118,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.1rem; margin:
 
 /* Schede */
 #shareActions:has(#shareSend[hidden]) { grid-template-columns: 1fr; }
+.seg-new { min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1.5px dashed var(--accent); background: transparent; color: var(--accent); font-weight: 600; font-size: 0.92rem; cursor: pointer; }
 .space-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .space-tabs button {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 12px; border-radius: 12px;
@@ -498,7 +499,7 @@ body.noscroll { overflow: hidden; }
     <section class="card" aria-labelledby="catTitle">
       <div>
         <h2 id="catTitle">Categorie</h2>
-        <p class="sub">Aggiungi le tue categorie, per esempio Auto, Salute o Figli. Compaiono subito nei tasti, nei riepiloghi e nei grafici.</p>
+        <p class="sub" id="catIntro">Aggiungi le tue categorie, per esempio Auto, Salute o Figli. Compaiono subito nei tasti, nei riepiloghi e nei grafici.</p>
       </div>
       <ul class="items" id="catList"></ul>
       <form class="cat-form" id="catForm" novalidate>
@@ -585,26 +586,42 @@ body.noscroll { overflow: hidden; }
 <script>
 (function () {
   // ---------- categorie ----------
-  const BUILTIN = [
+  // Sezione di coppia: categorie predefinite. Sezione personale: nessuna, le crea chi la usa.
+  const BUILTIN_COPPIA = [
     { k: "mutuo", l: "Mutuo",            s: "Mutuo", c: "var(--c-mutuo)", fixedOnly: true, builtin: true },
     { k: "casa",  l: "Casa",             s: "Casa",  c: "var(--c-casa)",  builtin: true },
     { k: "pasti", l: "Pasti fuori",      s: "Pasti", c: "var(--c-pasti)", builtin: true },
     { k: "extra", l: "Extra",            s: "Extra", c: "var(--c-extra)", builtin: true },
     { k: "spesa", l: "Spesa alimentare", s: "Spesa", c: "var(--c-spesa)", builtin: true }
   ];
-  const PALETTE = 8;
+  // nella sezione personale serve solo un posto per le spese senza categoria (compare solo se usato)
+  const BUILTIN_PERSONALI = [
+    { k: "altro", l: "Senza categoria", s: "Senza cat.", c: "var(--muted)", builtin: true, fallback: true }
+  ];
+  const EXTRA_COLORS = ["--c-casa", "--c-pasti", "--c-extra", "--c-spesa"];
+  const colorVar = p => p <= 8 ? `var(--c-p${p})` : `var(${EXTRA_COLORS[(p - 9) % EXTRA_COLORS.length]})`;
+  const isPers = () => space === "personali";
+  const maxCustom = () => isPers() ? 12 : 8;
+  const FALLBACK = () => isPers() ? "altro" : "extra";
   let custom = [];          // categorie aggiunte: {k, l, p}
   let CATS = [], CAT = {}, VAR_CATS = [];
   function rebuildCats() {
-    CATS = [...BUILTIN, ...custom.map(x => ({ k: x.k, l: x.l, s: x.l.length > 9 ? x.l.slice(0, 8) + "." : x.l, c: `var(--c-p${x.p})`, custom: true }))];
+    const base = isPers() ? BUILTIN_PERSONALI : BUILTIN_COPPIA;
+    const mine = custom.map(x => ({ k: x.k, l: x.l, s: x.l.length > 9 ? x.l.slice(0, 8) + "." : x.l, c: colorVar(x.p), custom: true }));
+    // nella sezione personale "Senza categoria" va in fondo
+    CATS = isPers() ? [...mine, ...base] : [...base, ...mine];
     CAT = Object.fromEntries(CATS.map(c => [c.k, c]));
     VAR_CATS = CATS.filter(c => !c.fixedOnly);
   }
-  const catOf = k => CAT[k] || CAT.extra;
-  // Il mutuo compare nei riepiloghi solo se è stato impostato come spesa fissa
-  const shownCats = () => CATS.filter(c => !c.fixedOnly || fixed.some(f => f.cat === c.k));
+  const catOf = k => CAT[k] || CAT[FALLBACK()];
+  function catUsed(k) {
+    for (const i of items.values()) if (i.cat === k || (!CAT[i.cat] && k === FALLBACK())) return true;
+    return fixed.some(f => f.cat === k || (!CAT[f.cat] && k === FALLBACK()));
+  }
+  // Mutuo e "Senza categoria" compaiono nei riepiloghi solo se usati
+  const shownCats = () => CATS.filter(c => !(c.fixedOnly || c.fallback) || catUsed(c.k));
   const normFixed = list => (Array.isArray(list) ? list : []).filter(f => f && f.id)
-    .map(f => /mutuo/i.test(f.name || "") && f.cat !== "mutuo" ? { ...f, cat: "mutuo" } : f);
+    .map(f => !isPers() && /mutuo/i.test(f.name || "") && f.cat !== "mutuo" ? { ...f, cat: "mutuo" } : f);
   function matchCustom(text) {
     const t = String(text || "").toLowerCase();
     const hit = custom.find(x => x.l.length >= 3 && t.includes(x.l.toLowerCase()));
@@ -670,7 +687,7 @@ body.noscroll { overflow: hidden; }
 
   // ---------- calcoli ----------
   const zero = () => Object.fromEntries(CATS.map(c => [c.k, 0]));
-  const kOf = (sums, k) => sums[k] !== undefined ? k : "extra";
+  const kOf = (sums, k) => sums[k] !== undefined ? k : FALLBACK();
   function fixedFor(key) { return fixed.filter(f => f.from <= key && (!f.to || f.to >= key)); }
   function hasVar(key) { for (const i of items.values()) if (i.month === key) return true; return false; }
   function stats(key, cutDay) {
@@ -741,14 +758,44 @@ body.noscroll { overflow: hidden; }
   }
 
   // ---------- registro ----------
-  function renderCatPick() {
-    const cur = (document.querySelector('input[name="cat"]:checked') || {}).value || "spesa";
-    const sel = VAR_CATS.some(c => c.k === cur) ? cur : "spesa";
+  function renderCatPick(selectKey) {
+    const def = isPers() ? (VAR_CATS[0] || {}).k : "spesa";
+    const cur = selectKey || (document.querySelector('input[name="cat"]:checked') || {}).value || def;
+    const sel = VAR_CATS.some(c => c.k === cur) ? cur : def;
     $("catPick").innerHTML = `<legend>Categoria</legend>` + VAR_CATS.map(c =>
-      `<input type="radio" name="cat" id="cat-${c.k}" value="${c.k}"${c.k === sel ? " checked" : ""}><label for="cat-${c.k}" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)}</label>`).join("");
-    const fx = $("fxCat").value || "mutuo";
+      `<input type="radio" name="cat" id="cat-${c.k}" value="${c.k}"${c.k === sel ? " checked" : ""}><label for="cat-${c.k}" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)}</label>`).join("")
+      + (custom.length < maxCustom() ? `<button type="button" class="seg-new" id="catNew">+ Nuova categoria</button>` : "");
+    const fxDef = isPers() ? (CATS[0] || {}).k : "mutuo";
+    const fx = CAT[$("fxCat").value] ? $("fxCat").value : fxDef;
     $("fxCat").innerHTML = CATS.map(c => `<option value="${c.k}"${c.k === fx ? " selected" : ""}>${esc(c.l)}</option>`).join("");
   }
+  // crea una categoria; restituisce la chiave o un messaggio d'errore
+  function createCategory(name) {
+    const l = String(name || "").trim().replace(/\s+/g, " ").slice(0, 24);
+    if (!l) return { err: "Scrivi il nome della categoria, ad esempio Palestra." };
+    if (CATS.some(c => c.l.toLowerCase() === l.toLowerCase())) return { err: "Esiste già una categoria con questo nome." };
+    if (custom.length >= maxCustom()) return { err: `Hai già ${maxCustom()} categorie: eliminane una per aggiungerne un'altra.` };
+    const usedP = new Set(custom.map(x => x.p));
+    let p = 1; while (usedP.has(p)) p++;
+    const k = newId("c_");
+    custom.push({ k, l: cap(l), p });
+    saveCats();
+    return { k, l: cap(l) };
+  }
+  $("catPick").addEventListener("click", ev => {
+    if (!ev.target.closest("#catNew")) return;
+    openSheet({
+      title: "Nuova categoria",
+      body: `<div class="field"><label for="ncName">Nome</label><input id="ncName" type="text" maxlength="24" autocomplete="off" placeholder="Es. Palestra, Auto, Abbigliamento"></div>`,
+      saveLabel: "Crea e usa",
+      onSave: () => {
+        const r = createCategory($("ncName").value);
+        if (r.err) { showErr("sheetErr", r.err); return false; }
+        renderCatPick(r.k); render(); toast(`Categoria ${r.l} creata`);
+      }
+    });
+    setTimeout(() => $("ncName") && $("ncName").focus(), 80);
+  });
 
   function renderRegistro(key) {
     // fisse
@@ -767,15 +814,20 @@ body.noscroll { overflow: hidden; }
     const used = {};
     for (const i of items.values()) used[i.cat] = (used[i.cat] || 0) + 1;
     for (const f of fixed) used[f.cat] = (used[f.cat] || 0) + 1;
-    $("catList").innerHTML = CATS.map(c => {
+    const listCats = CATS.filter(c => !c.fallback || catUsed(c.k));
+    $("catList").innerHTML = (listCats.length ? "" : `<li class="empty">Nessuna categoria ancora. Creane una qui sotto, oppure con "+ Nuova categoria" mentre inserisci una spesa.</li>`) + listCats.map(c => {
       const n = used[c.k] || 0;
       const info = c.fixedOnly ? "solo spese fisse" : n ? (n === 1 ? "1 spesa" : n + " spese") : "nessuna spesa";
       return c.custom
         ? `<li><button type="button" class="item nodate" data-edit-cat="${c.k}"><span class="item-main"><span class="item-note"><span class="dot" style="background:${c.c}"></span> ${esc(c.l)}</span><span class="item-cat">${info}</span></span><span class="item-amt sub">Modifica</span><span class="chev" aria-hidden="true">›</span></button></li>`
-        : `<li class="item nodate static"><span class="item-main"><span class="item-note"><span class="dot" style="background:${c.c}"></span> ${esc(c.l)}</span><span class="item-cat">${info}</span></span><span class="item-amt sub">Predefinita</span></li>`;
+        : `<li class="item nodate static"><span class="item-main"><span class="item-note"><span class="dot" style="background:${c.c}"></span> ${esc(c.l)}</span><span class="item-cat">${info}</span></span><span class="item-amt sub">${c.fallback ? "Tocca una spesa per assegnarla" : "Predefinita"}</span></li>`;
     }).join("");
-    $("catAddRow").hidden = custom.length >= PALETTE;
-    $("catFull").hidden = custom.length < PALETTE;
+    $("catAddRow").hidden = custom.length >= maxCustom();
+    $("catFull").hidden = custom.length < maxCustom();
+    $("catFull").textContent = `Hai raggiunto il massimo di ${maxCustom()} categorie. Eliminane una per aggiungerne un'altra.`;
+    $("catIntro").textContent = isPers()
+      ? "Qui ci sono solo le categorie che crei tu. Le puoi creare anche al volo con \"+ Nuova categoria\" mentre inserisci una spesa."
+      : "Aggiungi le tue categorie, per esempio Auto, Salute o Figli. Compaiono subito nei tasti, nei riepiloghi e nei grafici.";
 
     // settimane
     const list = [...items.values()].filter(i => i.month === key);
@@ -973,7 +1025,7 @@ body.noscroll { overflow: hidden; }
     if (cents === null) { showErr("formErr", "Scrivi un importo valido, ad esempio 12,50."); $("amount").focus(); return; }
     const date = $("date").value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr("formErr", "Scegli la data della spesa."); return; }
-    const cat = (document.querySelector('input[name="cat"]:checked') || {}).value || "spesa";
+    const cat = (document.querySelector('input[name="cat"]:checked') || {}).value || (VAR_CATS[0] || {}).k || FALLBACK();
     showErr("formErr", "");
     const id = newId("s");
     items.set(id, { id, date, month: date.slice(0, 7), cents, cat, note: $("note").value.trim().slice(0, 80), createdAt: Date.now() });
@@ -1003,18 +1055,13 @@ body.noscroll { overflow: hidden; }
   // nuova categoria
   $("catForm").addEventListener("submit", ev => {
     ev.preventDefault();
-    const l = $("catName").value.trim().replace(/\s+/g, " ").slice(0, 24);
-    if (!l) { showErr("catErr", "Scrivi il nome della categoria, ad esempio Auto."); $("catName").focus(); return; }
-    if (CATS.some(c => c.l.toLowerCase() === l.toLowerCase())) { showErr("catErr", "Esiste già una categoria con questo nome."); return; }
-    if (custom.length >= PALETTE) return;
+    const r = createCategory($("catName").value);
+    if (r.err) { showErr("catErr", r.err); $("catName").focus(); return; }
     showErr("catErr", "");
-    const usedP = new Set(custom.map(x => x.p));
-    let p = 1; while (usedP.has(p)) p++;
-    custom.push({ k: newId("c_"), l: cap(l), p });
-    saveCats(); renderCatPick();
+    renderCatPick();
     $("catName").value = "";
     render();
-    toast(`Categoria ${cap(l)} aggiunta`);
+    toast(`Categoria ${r.l} aggiunta`);
   });
 
   // ---------- scheda di modifica ----------
@@ -1111,7 +1158,7 @@ body.noscroll { overflow: hidden; }
     openSheet({
       title: "Modifica categoria",
       body: `<div class="field"><label for="cName">Nome</label><input id="cName" type="text" maxlength="24" value="${esc(x.l)}"></div>
-        <p class="hint">${n ? `Se elimini la categoria, ${n === 1 ? "la spesa che la usa passa" : `le ${n} spese che la usano passano`} in Extra.` : "Nessuna spesa usa questa categoria."}</p>`,
+        <p class="hint">${n ? `Se elimini la categoria, ${n === 1 ? "la spesa che la usa passa" : `le ${n} spese che la usano passano`} in ${catOf(FALLBACK()).l}.` : "Nessuna spesa usa questa categoria."}</p>`,
       onSave: () => {
         const l = $("cName").value.trim().replace(/\s+/g, " ").slice(0, 24);
         if (!l) { showErr("sheetErr", "Scrivi il nome della categoria."); return false; }
@@ -1120,11 +1167,12 @@ body.noscroll { overflow: hidden; }
       },
       dangerLabel: "Elimina categoria",
       onDanger: () => {
-        for (const [id, i] of items) if (i.cat === k) items.set(id, { ...i, cat: "extra" });
-        fixed = fixed.map(f => f.cat === k ? { ...f, cat: "extra" } : f);
+        const fb = FALLBACK(), fbName = catOf(fb).l;
+        for (const [id, i] of items) if (i.cat === k) items.set(id, { ...i, cat: fb });
+        fixed = fixed.map(f => f.cat === k ? { ...f, cat: fb } : f);
         custom = custom.filter(c => c.k !== k);
         saveItems(); saveFixed(); saveCats(); renderCatPick(); render();
-        toast(`Categoria eliminata${n ? ", spese spostate in Extra" : ""}`);
+        toast(`Categoria eliminata${n ? `, spese spostate in ${fbName}` : ""}`);
       }
     });
   }
@@ -1194,7 +1242,7 @@ body.noscroll { overflow: hidden; }
         const img = await prepareImage(files[i]);
         const { data } = await ocrWorker.recognize(img);
         if (cancelled) break;
-        found.push(...SpeseParse.parseReceipt(data.text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || o.cat })));
+        found.push(...SpeseParse.parseReceipt(data.text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) })));
       }
       if (cancelled) return;
       draft = found;
@@ -1216,7 +1264,7 @@ body.noscroll { overflow: hidden; }
     const text = $("quickText").value.trim();
     if (!text) { showErr("quickErr", "Detta o scrivi almeno una spesa, per esempio \"pizzeria 38 euro\"."); $("quickText").focus(); return; }
     showErr("quickErr", ""); micHint("");
-    draft = SpeseParse.parseText(text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || o.cat }));
+    draft = SpeseParse.parseText(text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) }));
     if (!draft.length) showErr("quickErr", "Non ho trovato importi. Dì la spesa con la cifra, per esempio \"supermercato 62 e 40\".");
     renderReview();
   }
@@ -1347,7 +1395,7 @@ body.noscroll { overflow: hidden; }
       fixed = normFixed([...fixed, ...(Array.isArray(data.fixed) ? data.fixed.filter(x => x && !known.has(x.id)) : [])]);
       if (Array.isArray(data.categories)) {
         const ck = new Set(custom.map(x => x.k));
-        for (const c of data.categories) if (c && c.k && c.l && !ck.has(c.k) && custom.length < PALETTE) custom.push(c);
+        for (const c of data.categories) if (c && c.k && c.l && !ck.has(c.k) && custom.length < maxCustom()) custom.push(c);
       }
       saveItems(); saveFixed(); saveCats(); renderCatPick();
       render(); toast(`Ripristinate ${added} spese`);
@@ -1598,7 +1646,7 @@ body.noscroll { overflow: hidden; }
   $("sp-personali").addEventListener("click", () => switchSpace("personali"));
 
   // ---------- aggiornamento dell'app ----------
-  const APP_VERSION = "1.4";
+  const APP_VERSION = "1.5";
   $("appVersion").textContent = "Versione " + APP_VERSION;
   async function checkUpdate(manual) {
     const btn = $("updateBtn");
