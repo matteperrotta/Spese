@@ -109,8 +109,35 @@
     return note ? note[0].toUpperCase() + note.slice(1) : "";
   }
 
+  // ---- chi ha pagato e come si divide (spese di coppia) ----
+  const L = "(?<![a-zà-ù])", R = "(?![a-zà-ù])";
+  const NOMI = { alice: "(?:ali|alice)", matteo: "(?:matteo|matte|teo)" };
+  const rx = s => new RegExp(L + s + R, "i");
+  const PAYER = [
+    ["comune", rx("(?:pagat[aoei]\\s+)?(?:(?:da|dal|dalla|con|col|con\\s+il|con\\s+la|sul)\\s+)?(?:il\\s+|la\\s+)?(?:conto|carta)\\s+(?:in\\s+)?(?:comune|cointestat[ao])")],
+    ["comune", rx("(?:dal|col|con\\s+il)\\s+comune")],
+    ["alice", rx("(?:pagat[aoei]\\s+da\\s+" + NOMI.alice + "|" + NOMI.alice + "\\s+ha\\s+pagato|(?:l['’]\\s*)?ha\\s+pagat[aoei]\\s+" + NOMI.alice + ")")],
+    ["matteo", rx("(?:pagat[aoei]\\s+da\\s+" + NOMI.matteo + "|" + NOMI.matteo + "\\s+ha\\s+pagato|(?:l['’]\\s*)?ha\\s+pagat[aoei]\\s+" + NOMI.matteo + ")")],
+    ["me", rx("(?:pagat[aoei]\\s+da\\s+me|(?:l['’]\\s*)?ho\\s+pagat[aoei](?:\\s+io)?|pago\\s+io|ho\\s+pagato)")]
+  ];
+  const SPLIT = [
+    ["alice", rx("(?:tutt[aoei]\\s+(?:di|a|ad|per)\\s+" + NOMI.alice + "|(?:spetta|tocca)\\s+(?:tutt[aoei]\\s+)?(?:ad?\\s+)?" + NOMI.alice + "|solo\\s+(?:di|per)\\s+" + NOMI.alice + "|è\\s+(?:tutt[ao]\\s+)?di\\s+" + NOMI.alice + "|intero\\s+importo\\s+(?:ad?|per)\\s+" + NOMI.alice + ")")],
+    ["matteo", rx("(?:tutt[aoei]\\s+(?:di|a|per)\\s+" + NOMI.matteo + "|(?:spetta|tocca)\\s+(?:tutt[aoei]\\s+)?a\\s+" + NOMI.matteo + "|solo\\s+(?:di|per)\\s+" + NOMI.matteo + "|è\\s+(?:tutt[ao]\\s+)?di\\s+" + NOMI.matteo + "|intero\\s+importo\\s+(?:a|per)\\s+" + NOMI.matteo + ")")],
+    ["me", rx("(?:tutt[aoei]\\s+(?:mia|mio|mie|miei|a\\s+me|per\\s+me)|(?:spetta|tocca)\\s+(?:tutt[aoei]\\s+)?a\\s+me|solo\\s+mi[ao]|è\\s+(?:tutt[ao]\\s+)?mi[ao])")],
+    ["meta", rx("(?:a\\s+met[àa]|met[àa]\\s+(?:ciascuno|a\\s+testa|per\\s+uno)|in\\s+parti\\s+uguali|equamente|in\\s+due|dividi(?:amo|amola|la|amolo|lo)?|50\\s*(?:e|-|\\/|%)\\s*50)")]
+  ];
+  // trova chi ha pagato e la divisione in una frase; li toglie dal testo
+  function takeWho(text, me) {
+    let t = text, payer, split, first = Infinity;
+    for (const [k, r] of PAYER) { const m = t.match(r); if (m) { payer = k === "me" ? me : k; first = Math.min(first, m.index); t = t.slice(0, m.index) + " " + t.slice(m.index + m[0].length); break; } }
+    for (const [k, r] of SPLIT) { const m = t.match(r); if (m) { split = k === "me" ? me : k; first = Math.min(first, m.index); t = t.slice(0, m.index) + " " + t.slice(m.index + m[0].length); break; } }
+    return { payer: payer || undefined, split: split || undefined, rest: t, first };
+  }
+
   // Frasi dettate o scritte: "ieri pizzeria 38 euro, oggi supermercato 62 e 40"
-  function parseText(input, today) {
+  // opts.me = "matteo" o "alice" per capire "pagata da me", "tutta mia"
+  function parseText(input, today, opts) {
+    opts = opts || {};
     today = today || new Date();
     today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     let text = " " + String(input || "").replace(/\s+/g, " ") + " ";
@@ -119,14 +146,27 @@
       (all, w, e) => NUM_WORDS[w.toLowerCase()] + " " + e);
     const chunks = text.split(/[;\n]|,(?!\d)|\.\s|\b(?:e poi|poi|dopo)\b/i);
     const out = [];
-    let carryDate = iso(today);
+    let carryDate = iso(today), carryPayer, carrySplit, lastChunk = [];
     for (let chunk of chunks) {
       if (!chunk.trim()) continue;
+      const who = takeWho(chunk, opts.me);
+      chunk = who.rest;
       const dt = takeDate(chunk, today);
       if (dt.date) carryDate = dt.date;
       chunk = dt.rest;
       const amts = amountsIn(chunk);
-      if (!amts.length) continue;
+      // una frase senza importi ("pagate da Ali:") vale per quelle che seguono
+      if (!amts.length) {
+        // "…, tutta di Matteo" dopo una spesa vale per quella; prima di tutte vale per quelle che seguono
+        if (lastChunk.length) {
+          for (const o of lastChunk) { if (who.payer && !o.payer) o.payer = who.payer; if (who.split && !o.split) o.split = who.split; }
+        } else { if (who.payer) carryPayer = who.payer; if (who.split) carrySplit = who.split; }
+        continue;
+      }
+      lastChunk = [];
+      // "pagate da Ali: bar 5, pane 3" all'inizio vale anche per le spese che seguono
+      if (!out.length && who.first < amts[0].start) { if (who.payer) carryPayer = who.payer; if (who.split) carrySplit = who.split; }
+      const payer = who.payer || carryPayer, split = who.split || carrySplit;
       let prevEnd = 0;
       amts.forEach((a, i) => {
         const before = chunk.slice(prevEnd, a.start);
@@ -136,7 +176,10 @@
         if (note) prevEnd = a.end;
         else { note = cleanNote(after); prevEnd = nextStart; }
         if (a.cents <= 0) return;
-        out.push({ date: carryDate, cents: a.cents, cat: guessCat(note || chunk, "extra"), note });
+        const o = { date: carryDate, cents: a.cents, cat: guessCat(note || chunk, "extra"), note };
+        if (payer) o.payer = payer;
+        if (split) o.split = split;
+        out.push(o); lastChunk.push(o);
       });
     }
     return out;

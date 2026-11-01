@@ -118,6 +118,26 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.1rem; margin:
 
 /* Schede */
 #shareActions:has(#shareSend[hidden]) { grid-template-columns: 1fr; }
+.split-opts { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.split-opts legend { margin-bottom: 6px; padding: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.split-opts input { position: absolute; opacity: 0; pointer-events: none; }
+.split-opts label { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.split-opts input:checked + label { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent); }
+.split-opts input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.so-t { font-weight: 600; font-size: 0.95rem; }
+.so-e { font-size: 0.85rem; }
+.pos { color: var(--good); }
+.neg { color: var(--c-pasti); }
+.zero { color: var(--muted); }
+.who-ask { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; border: 1px dashed var(--accent); }
+.who-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.balance .bal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bal-t { font-family: var(--f-display); font-weight: 700; font-size: 1.25rem; line-height: 1.2; margin-top: 2px; }
+.balance .primary { height: 44px; padding: 0 20px; flex: none; }
+.pay-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); align-items: center; }
+.pay-row .dot { width: 9px; height: 9px; margin-right: 4px; }
+.link-btn { border: 0; background: transparent; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; padding: 2px 0; cursor: pointer; font-size: inherit; }
+.rv .line2 .rv-split { grid-column: 1 / -1; }
 .seg-new { min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1.5px dashed var(--accent); background: transparent; color: var(--accent); font-weight: 600; font-size: 0.92rem; cursor: pointer; }
 .space-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .space-tabs button {
@@ -366,6 +386,14 @@ body.noscroll { overflow: hidden; }
     <div class="split" id="monthSplit"></div>
   </section>
 
+  <section class="card balance" id="balanceCard" aria-label="Saldo tra voi" hidden>
+    <div class="bal-row">
+      <div><span class="label">Saldo tra voi</span><div class="bal-t" id="balText">Siete in pari</div></div>
+      <button class="primary" id="settleBtn" type="button">Salda</button>
+    </div>
+    <ul class="items" id="settleList"></ul>
+  </section>
+
   <div class="bar" id="monthBar" aria-hidden="true"></div>
   <div class="cats" id="cats"></div>
 
@@ -426,6 +454,7 @@ body.noscroll { overflow: hidden; }
         </div>
       </div>
       <fieldset class="seg" id="catPick"><legend>Categoria</legend></fieldset>
+      <div id="splitPick" hidden></div>
       <div class="field">
         <label for="note">Nota (facoltativa)</label>
         <input id="note" type="text" maxlength="80" autocomplete="off" placeholder="Es. bolletta luce, pizzeria, supermercato">
@@ -453,6 +482,10 @@ body.noscroll { overflow: hidden; }
         <div class="field">
           <label for="fxCat">Categoria</label>
           <select id="fxCat"><option value="mutuo">Mutuo</option></select>
+        </div>
+        <div class="field full" id="fxSplitWrap" hidden>
+          <label for="fxSplit">Chi la paga</label>
+          <select id="fxSplit"><option value="comune">Pagata dal conto comune</option></select>
         </div>
         <div class="field" style="justify-content:flex-end">
           <button class="secondary" id="fxBtn" type="submit">Aggiungi fissa</button>
@@ -486,6 +519,7 @@ body.noscroll { overflow: hidden; }
           <button class="secondary" id="shareCopy" type="button">Copia</button>
         </div>
         <p class="hint" id="shareOnHint">Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in "Hai già un codice?" e tocca Entra.</p>
+        <p class="hint" id="meLine"></p>
         <button class="secondary" id="shareNow" type="button">Aggiorna adesso</button>
         <form id="recoverForm" class="cat-add" novalidate hidden>
           <div class="field"><label for="recoverCode">Hai un codice di recupero da un altro telefono?</label><input id="recoverCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></div>
@@ -551,6 +585,14 @@ body.noscroll { overflow: hidden; }
         <p class="sub" id="cmpSub"></p>
       </div>
       <div id="cmp"></div>
+    </section>
+
+    <section class="card" id="payCard" aria-labelledby="payTitle" hidden>
+      <div>
+        <h2 id="payTitle">Chi ha pagato</h2>
+        <p class="sub">Spese di coppia del mese, fisse comprese. Le spese inserite prima della versione 1.6 contano come pagate dal conto comune.</p>
+      </div>
+      <div id="payBody"></div>
     </section>
 
     <section class="card" aria-labelledby="notesTitle">
@@ -639,13 +681,14 @@ body.noscroll { overflow: hidden; }
   // Due sezioni separate: "coppia" (condivisa) e "personali" (privata di chi usa il telefono)
   const LS_SPACE = "spese-mensili-sezione";
   let space = (() => { try { return localStorage.getItem(LS_SPACE) === "personali" ? "personali" : "coppia"; } catch (e) { return "coppia"; } })();
-  let LS_ITEMS, LS_FIXED, LS_CATS, LS_SYNC;
+  let LS_ITEMS, LS_FIXED, LS_CATS, LS_SYNC, LS_SETTLE;
   function setKeys() {
     const sfx = space === "personali" ? "-personali" : "";
     LS_ITEMS = "spese-mensili-v1" + sfx;
     LS_FIXED = "spese-mensili-fisse-v1" + sfx;
     LS_CATS = "spese-mensili-categorie-v1" + sfx;
     LS_SYNC = "spese-mensili-sync-v1" + sfx;
+    LS_SETTLE = "spese-mensili-rimborsi-v1" + sfx;
   }
   setKeys();
 
@@ -668,6 +711,7 @@ body.noscroll { overflow: hidden; }
     items = new Map((readLS(LS_ITEMS) || []).filter(r => r && r.id).map(r => [r.id, r]));
     fixed = normFixed(readLS(LS_FIXED));
     custom = (readLS(LS_CATS) || []).filter(x => x && x.k && x.l);
+    settles = (readLS(LS_SETTLE) || []).filter(x => x && x.id && typeof x.cents === "number");
     rebuildCats();
   }
   const saveItems = () => { writeLS(LS_ITEMS, [...items.values()]); scheduleSync(); };
@@ -733,8 +777,23 @@ body.noscroll { overflow: hidden; }
   }
 
   // ---------- render comune ----------
+  function renderBalance() {
+    const card = $("balanceCard");
+    card.hidden = isPers();
+    if (isPers()) return;
+    const bt = balanceText(balance());
+    $("balText").textContent = bt.t;
+    $("balText").className = "bal-t " + bt.cls;
+    const last = settles.slice().sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 3);
+    $("settleList").innerHTML = last.map(x => {
+      const d = new Date(x.date + "T12:00:00");
+      return `<li><button type="button" class="item nodate" data-settle="${esc(x.id)}"><span class="item-main"><span class="item-note">${esc(PEOPLE[x.from])} ha dato ${fmt(x.cents)} ${esc(aOrAd(PEOPLE[x.to]))}</span><span class="item-cat">Rimborso · ${d.getDate()} ${MESI[d.getMonth()].slice(0, 3)}</span></span><span class="item-amt num">${fmt(x.cents)}</span><span class="chev" aria-hidden="true">›</span></button></li>`;
+    }).join("");
+  }
+
   function render() {
     renderSpace();
+    renderBalance();
     const key = keyOf(viewY, viewM);
     const st = stats(key);
     $("monthLabel").textContent = `${cap(MESI[viewM])} ${viewY}`;
@@ -757,8 +816,120 @@ body.noscroll { overflow: hidden; }
     if (view === "registro") renderRegistro(key); else renderAnalisi(key);
   }
 
+  // ---------- chi ha pagato e come si divide (solo spese di coppia) ----------
+  const PEOPLE = { matteo: "Matteo", alice: "Alice" };
+  const otherOf = p => p === "matteo" ? "alice" : "matteo";
+  const aOrAd = name => /^[aeiouAEIOU]/.test(name) ? "ad " + name : "a " + name;
+  const LS_ME = "spese-mensili-io";
+  const LS_LASTOPT = "spese-mensili-ultima-divisione";
+  let me = (() => { try { const v = localStorage.getItem(LS_ME); return PEOPLE[v] ? v : null; } catch (e) { return null; } })();
+  let settles = [];   // rimborsi tra i due: {id, date, cents, from, to}
+  const saveSettles = () => { writeLS(LS_SETTLE, settles); scheduleSync(); };
+  const SPLIT_OPTS = ["io_meta", "io_altro", "altro_meta", "altro_io", "comune"];
+  function optToPS(opt) {
+    if (opt === "comune" || !me) return { payer: "comune", split: "meta" };
+    const o = otherOf(me);
+    return ({ io_meta: { payer: me, split: "meta" }, io_altro: { payer: me, split: o },
+      altro_meta: { payer: o, split: "meta" }, altro_io: { payer: o, split: me } })[opt] || { payer: "comune", split: "meta" };
+  }
+  function psToOpt(payer, split) {
+    if (!payer || payer === "comune" || !me) return "comune";
+    const o = otherOf(me);
+    if (payer === me) return split === o ? "io_altro" : "io_meta";
+    return split === me ? "altro_io" : "altro_meta";
+  }
+  const lastOpt = () => { try { const v = localStorage.getItem(LS_LASTOPT); return SPLIT_OPTS.includes(v) ? v : (me ? "io_meta" : "comune"); } catch (e) { return "comune"; } };
+  const rememberOpt = opt => { try { localStorage.setItem(LS_LASTOPT, opt); } catch (e) {} };
+  // effetto sul saldo, in centesimi: positivo = Alice deve a Matteo
+  function effectOf(cents, payer, split) {
+    if (!payer || payer === "comune" || !PEOPLE[payer]) return 0;
+    const quotaAlice = split === "alice" ? cents : split === "matteo" ? 0 : cents / 2;
+    const quotaMatteo = cents - quotaAlice;
+    return payer === "matteo" ? quotaAlice : -quotaMatteo;
+  }
+  // quanto costa la spesa a ciascuno
+  function sharesOf(cents, payer, split) {
+    if (!payer || payer === "comune" || split === "meta" || !split) return { matteo: cents / 2, alice: cents / 2 };
+    return split === "alice" ? { matteo: 0, alice: cents } : { matteo: cents, alice: 0 };
+  }
+  function balance() {
+    let b = 0;
+    for (const i of items.values()) b += effectOf(i.cents, i.payer, i.split);
+    for (const f of fixed) {
+      if (!f.payer || f.payer === "comune") continue;
+      for (let m = f.from; m <= curKey && (!f.to || m <= f.to); m = addMonth(m, 1)) b += effectOf(f.cents, f.payer, f.split);
+    }
+    for (const s of settles) b += s.from === "alice" ? -s.cents : s.cents;
+    return Math.round(b);
+  }
+  // frase del saldo dal punto di vista di chi usa il telefono
+  function balanceText(b, viewer = me) {
+    const abs = fmt(Math.abs(b));
+    if (Math.abs(b) < 1) return { t: "Siete in pari", cls: "zero" };
+    const debtor = b > 0 ? "alice" : "matteo", creditor = otherOf(debtor);
+    if (!viewer) return { t: `${PEOPLE[debtor]} deve ${abs} ${aOrAd(PEOPLE[creditor])}`, cls: "zero" };
+    return viewer === creditor
+      ? { t: `${PEOPLE[debtor]} ti deve ${abs}`, cls: "pos" }
+      : { t: `Devi ${abs} ${aOrAd(PEOPLE[creditor])}`, cls: "neg" };
+  }
+  function optLabel(opt) {
+    if (opt === "comune") return "Pagata dal conto comune";
+    const O = me ? PEOPLE[otherOf(me)] : "l'altra persona";
+    return ({ io_meta: "Hai pagato tu, dividi a metà", io_altro: `Hai pagato tu, è tutta ${me === "matteo" ? "di Alice" : "di Matteo"}`,
+      altro_meta: `Ha pagato ${O}, dividi a metà`, altro_io: `Ha pagato ${O}, è tutta tua` })[opt];
+  }
+  function optEffectText(opt, cents) {
+    if (opt === "comune") return { t: "Nessun debito tra voi", cls: "zero" };
+    const { payer, split } = optToPS(opt);
+    const e = effectOf(cents || 0, payer, split);
+    if (!cents) return { t: e >= 0 ? (me === "matteo" ? "Alice ti dovrà dei soldi" : "Dovrai dei soldi a Matteo") : (me === "matteo" ? "Dovrai dei soldi ad Alice" : "Matteo ti dovrà dei soldi"), cls: "zero" };
+    return balanceText(e);
+  }
+  // etichetta assoluta mostrata nell'elenco spese
+  function payerLabel(x) {
+    if (!x.payer) return "";
+    if (x.payer === "comune") return "Conto comune";
+    const by = `Pagata da ${PEOPLE[x.payer]}`;
+    return x.split && x.split !== "meta" ? `${by} · tutta di ${PEOPLE[x.split]}` : `${by} · a metà`;
+  }
+  // elenco di scelte, come nella schermata di Splitwise
+  function splitPickHTML(name, sel, cents, amtSrc) {
+    if (!me) return `<div class="who-ask" data-who-ask="${name}" data-amt="${amtSrc || ""}">
+        <span class="label">Prima dimmi chi sei su questo telefono</span>
+        <div class="who-btns"><button type="button" class="secondary" data-set-me="matteo">Sono Matteo</button><button type="button" class="secondary" data-set-me="alice">Sono Alice</button></div>
+        <p class="hint">Serve per scrivere "hai pagato tu" e "ti deve". Lo chiedo una volta sola.</p>
+      </div>`;
+    return `<fieldset class="split-opts" data-split-name="${name}" data-amt="${amtSrc || ""}"><legend>Chi ha pagato e come si divide</legend>${SPLIT_OPTS.map(opt => {
+      const e = optEffectText(opt, cents);
+      return `<input type="radio" name="${name}" id="${name}-${opt}" value="${opt}"${opt === sel ? " checked" : ""}>
+        <label for="${name}-${opt}"><span class="so-t">${esc(optLabel(opt))}</span><span class="so-e ${e.cls}" data-opt="${opt}">${esc(e.t)}</span></label>`;
+    }).join("")}</fieldset>`;
+  }
+  function refreshSplitEffects(container, cents) {
+    container.querySelectorAll(".so-e[data-opt]").forEach(el => {
+      const e = optEffectText(el.dataset.opt, cents);
+      el.textContent = e.t; el.className = "so-e " + e.cls;
+    });
+  }
+  function setMe(p) {
+    me = PEOPLE[p] ? p : null;
+    try { localStorage.setItem(LS_ME, me || ""); } catch (e) {}
+  }
+
   // ---------- registro ----------
+  function renderSplitPick(sel) {
+    const box = $("splitPick");
+    if (isPers()) { box.innerHTML = ""; box.hidden = true; return; }
+    box.hidden = false;
+    const cur = sel || picked("fsplit") || lastOpt();
+    box.innerHTML = splitPickHTML("fsplit", cur, parseCents($("amount").value) || 0, "amount");
+    const fx = $("fxSplitWrap");
+    fx.hidden = false;
+    const fxCur = $("fxSplit").value || "comune";
+    $("fxSplit").innerHTML = (me ? SPLIT_OPTS : ["comune"]).map(o => `<option value="${o}"${o === fxCur ? " selected" : ""}>${esc(optLabel(o))}</option>`).join("");
+  }
   function renderCatPick(selectKey) {
+    if (isPers()) $("fxSplitWrap").hidden = true;
     const def = isPers() ? (VAR_CATS[0] || {}).k : "spesa";
     const cur = selectKey || (document.querySelector('input[name="cat"]:checked') || {}).value || def;
     const sel = VAR_CATS.some(c => c.k === cur) ? cur : def;
@@ -768,6 +939,7 @@ body.noscroll { overflow: hidden; }
     const fxDef = isPers() ? (CATS[0] || {}).k : "mutuo";
     const fx = CAT[$("fxCat").value] ? $("fxCat").value : fxDef;
     $("fxCat").innerHTML = CATS.map(c => `<option value="${c.k}"${c.k === fx ? " selected" : ""}>${esc(c.l)}</option>`).join("");
+    renderSplitPick();
   }
   // crea una categoria; restituisce la chiave o un messaggio d'errore
   function createCategory(name) {
@@ -805,7 +977,7 @@ body.noscroll { overflow: hidden; }
       const c = catOf(f.cat);
       return `<li><button type="button" class="item nodate" data-edit-fixed="${esc(f.id)}">
         <span class="item-main"><span class="item-note">${esc(f.name)}</span>
-          <span class="item-cat" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)} · ogni mese da ${monthShort(f.from)}</span></span>
+          <span class="item-cat" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)} · ogni mese da ${monthShort(f.from)}${!isPers() && f.payer && f.payer !== "comune" ? " · " + esc(payerLabel(f)) : ""}</span></span>
         <span class="item-amt num">${fmt(f.cents)}</span><span class="chev" aria-hidden="true">›</span>
       </button></li>`;
     }).join("") : '<li class="empty">Nessuna spesa fissa attiva in questo mese.</li>';
@@ -856,7 +1028,7 @@ body.noscroll { overflow: hidden; }
         return `<li><button type="button" class="item" data-edit="${esc(i.id)}">
           <span class="item-date">${GIORNI[d.getDay()]}<b>${d.getDate()}</b></span>
           <span class="item-main"><span class="item-note">${esc(i.note || c.l)}</span>
-            <span class="item-cat" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)}</span></span>
+            <span class="item-cat" style="--c:${c.c}"><span class="dot"></span>${esc(c.l)}${!isPers() && i.payer ? " · " + esc(payerLabel(i)) : ""}</span></span>
           <span class="item-amt num">${fmt(i.cents)}</span><span class="chev" aria-hidden="true">›</span>
         </button></li>`;
       }).join("");
@@ -983,6 +1155,30 @@ body.noscroll { overflow: hidden; }
     else if (!n) notes.push({ t: "info", ic: "i", h: "Dal prossimo mese potrò dirti in quali settori stai spendendo più del solito." });
     $("notes").innerHTML = notes.map(o => `<li class="${o.t}"><span class="ic">${o.ic}</span><span>${o.h}</span></li>`).join("");
 
+    // --- chi ha pagato (solo di coppia) ---
+    $("payCard").hidden = isPers();
+    if (!isPers()) {
+      const paid = { comune: 0, matteo: 0, alice: 0 }, cost = { matteo: 0, alice: 0 };
+      const add = (cents, payer, split) => {
+        paid[PEOPLE[payer] ? payer : "comune"] += cents;
+        const sh = sharesOf(cents, payer, split); cost.matteo += sh.matteo; cost.alice += sh.alice;
+      };
+      for (const i of items.values()) if (i.month === key) add(i.cents, i.payer, i.split);
+      for (const f of fixedFor(key)) add(f.cents, f.payer, f.split);
+      const tot = paid.comune + paid.matteo + paid.alice;
+      const row = (l, v, cls) => `<div class="pay-row"><span>${l}</span><span class="num ${cls || ""}">${fmt(v)}</span></div>`;
+      $("payBody").innerHTML = tot ? `
+        <div class="bar" aria-hidden="true">${[["comune", "var(--muted)"], ["matteo", "var(--c-casa)"], ["alice", "var(--c-p1)"]].filter(([k]) => paid[k]).map(([k, c]) => `<span style="width:${(paid[k] / tot * 100).toFixed(2)}%;background:${c}"></span>`).join("")}</div>
+        ${row('<span class="dot" style="background:var(--muted)"></span> Conto comune', paid.comune)}
+        ${row('<span class="dot" style="background:var(--c-casa)"></span> Matteo', paid.matteo)}
+        ${row('<span class="dot" style="background:var(--c-p1)"></span> Alice', paid.alice)}
+        <span class="label" style="margin-top:6px">Quanto è costato a ciascuno</span>
+        ${row("Matteo", Math.round(cost.matteo))}
+        ${row("Alice", Math.round(cost.alice))}
+        <p class="hint">Le spese a metà contano metà per uno; quelle "tutta di…" contano per intero a chi spettano. Quelle del conto comune contano metà per uno.</p>`
+        : `<p class="empty">Nessuna spesa di coppia a ${MESI[viewM]}.</p>`;
+    }
+
     // --- storico ---
     const hk = []; for (let k = 0; k < 12; k++) { const m = addMonth(key, -k); if (m === key || hasVar(m)) hk.push(m); }
     const hs = hk.map(m => ({ m, ...stats(m) }));
@@ -1028,7 +1224,9 @@ body.noscroll { overflow: hidden; }
     const cat = (document.querySelector('input[name="cat"]:checked') || {}).value || (VAR_CATS[0] || {}).k || FALLBACK();
     showErr("formErr", "");
     const id = newId("s");
-    items.set(id, { id, date, month: date.slice(0, 7), cents, cat, note: $("note").value.trim().slice(0, 80), createdAt: Date.now() });
+    const rec = { id, date, month: date.slice(0, 7), cents, cat, note: $("note").value.trim().slice(0, 80), createdAt: Date.now() };
+    if (!isPers()) { const opt = picked("fsplit") || lastOpt(); Object.assign(rec, optToPS(opt)); rememberOpt(opt); }
+    items.set(id, rec);
     saveItems();
     $("amount").value = ""; $("note").value = "";
     const [yy, mm] = date.split("-").map(Number);
@@ -1045,7 +1243,9 @@ body.noscroll { overflow: hidden; }
     if (cents === null) { showErr("fxErr", "Scrivi un importo mensile valido, ad esempio 650,00."); $("fxAmount").focus(); return; }
     showErr("fxErr", "");
     const from = keyOf(viewY, viewM);
-    fixed.push({ id: newId("f"), name, cents, cat: $("fxCat").value, from, to: null });
+    const fxRec = { id: newId("f"), name, cents, cat: $("fxCat").value, from, to: null };
+    if (!isPers()) Object.assign(fxRec, optToPS($("fxSplit").value || "comune"));
+    fixed.push(fxRec);
     saveFixed();
     $("fxName").value = ""; $("fxAmount").value = "";
     render();
@@ -1104,13 +1304,16 @@ body.noscroll { overflow: hidden; }
           <div class="field"><label for="eAmt">Importo</label><div class="amount-wrap"><span>€</span><input id="eAmt" type="text" inputmode="decimal" value="${centsStr(it.cents)}"></div></div>
           <div class="field"><label for="eDate">Data</label><input id="eDate" type="date" value="${it.date}"></div>
         </div>
-        <div class="field"><label for="eNote">Nota</label><input id="eNote" type="text" maxlength="80" value="${esc(it.note)}" placeholder="Es. pizzeria"></div>`,
+        <div class="field"><label for="eNote">Nota</label><input id="eNote" type="text" maxlength="80" value="${esc(it.note)}" placeholder="Es. pizzeria"></div>
+        ${isPers() ? "" : splitPickHTML("esplit", psToOpt(it.payer, it.split), it.cents, "eAmt")}`,
       onSave: () => {
         const cents = parseCents($("eAmt").value);
         if (cents === null) { showErr("sheetErr", "Scrivi un importo valido, ad esempio 12,50."); return false; }
         const date = $("eDate").value;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr("sheetErr", "Scegli la data."); return false; }
-        items.set(id, { ...it, cents, date, month: date.slice(0, 7), cat: picked("ecat") || it.cat, note: $("eNote").value.trim().slice(0, 80) });
+        const upd = { ...it, cents, date, month: date.slice(0, 7), cat: picked("ecat") || it.cat, note: $("eNote").value.trim().slice(0, 80) };
+        if (!isPers() && picked("esplit")) Object.assign(upd, optToPS(picked("esplit")));
+        items.set(id, upd);
         saveItems(); render(); toast("Spesa aggiornata");
       },
       dangerLabel: "Elimina spesa",
@@ -1127,18 +1330,22 @@ body.noscroll { overflow: hidden; }
       body: `<div class="field"><label for="fName">Voce</label><input id="fName" type="text" maxlength="40" value="${esc(f.name)}"></div>
         <div class="field"><label for="fAmt">Importo al mese</label><div class="amount-wrap"><span>€</span><input id="fAmt" type="text" inputmode="decimal" value="${centsStr(f.cents)}"></div></div>
         ${catChoices(CATS, kOf(CAT, f.cat), "fcat")}
-        <p class="hint">${started ? `Se cambi l'importo vale da ${monthLong(key)} in poi: i mesi prima restano con ${fmt(f.cents)}.` : "Si ripete da sola ogni mese, non devi reinserirla."}</p>`,
+        ${isPers() ? "" : splitPickHTML("fsplit2", psToOpt(f.payer, f.split), f.cents, "fAmt")}
+        <p class="hint">${started ? `Se cambi l'importo o chi la paga, vale da ${monthLong(key)} in poi: i mesi prima restano come erano.` : "Si ripete da sola ogni mese, non devi reinserirla."}</p>`,
       onSave: () => {
         const name = $("fName").value.trim().slice(0, 40);
         const cents = parseCents($("fAmt").value);
         if (!name) { showErr("sheetErr", "Scrivi il nome della voce."); return false; }
         if (cents === null) { showErr("sheetErr", "Scrivi un importo valido, ad esempio 650,00."); return false; }
         const cat = picked("fcat") || f.cat;
-        if (started && cents !== f.cents) {
+        const ps = !isPers() && picked("fsplit2") ? optToPS(picked("fsplit2")) : { payer: f.payer, split: f.split };
+        const psChanged = (ps.payer || "comune") !== (f.payer || "comune") || (ps.split || "meta") !== (f.split || "meta");
+        if (started && (cents !== f.cents || psChanged)) {
+          // i mesi passati restano come erano: la modifica vale da questo mese
           fixed = fixed.map(x => x.id === fid ? { ...x, name, cat, to: addMonth(key, -1) } : x);
-          fixed.push({ id: newId("f"), name, cents, cat, from: key, to: f.to || null });
+          fixed.push({ id: newId("f"), name, cents, cat, from: key, to: f.to || null, ...(isPers() ? {} : ps) });
         } else {
-          fixed = fixed.map(x => x.id === fid ? { ...x, name, cents, cat } : x);
+          fixed = fixed.map(x => x.id === fid ? { ...x, name, cents, cat, ...(isPers() ? {} : ps) } : x);
         }
         saveFixed(); render(); toast(`${name} aggiornata`);
       },
@@ -1178,10 +1385,66 @@ body.noscroll { overflow: hidden; }
   }
 
   document.addEventListener("click", ev => {
+    const who = ev.target.closest("[data-set-me]");
+    if (who) {
+      setMe(who.dataset.setMe);
+      const ask = who.closest("[data-who-ask]");
+      if (ask) {
+        const src = ask.dataset.amt, cents = src && $(src) ? parseCents($(src).value) || 0 : 0;
+        ask.outerHTML = splitPickHTML(ask.dataset.whoAsk, lastOpt(), cents, src);
+      }
+      renderSplitPick(); renderShare(); render();
+      toast(`Ciao ${PEOPLE[me]}!`);
+      return;
+    }
+    const st = ev.target.closest("[data-settle]"); if (st) return editSettle(st.dataset.settle);
     const a = ev.target.closest("[data-edit]"); if (a) return editItem(a.dataset.edit);
     const b = ev.target.closest("[data-edit-fixed]"); if (b) return editFixed(b.dataset.editFixed);
     const c = ev.target.closest("[data-edit-cat]"); if (c) return editCat(c.dataset.editCat);
   });
+
+  // aggiorna le frasi "ti deve / devi" mentre si scrive l'importo
+  document.addEventListener("input", ev => {
+    const id = ev.target.id;
+    if (!id || !["amount", "eAmt", "fAmt"].includes(id)) return;
+    document.querySelectorAll(`.split-opts[data-amt="${id}"]`).forEach(fs => refreshSplitEffects(fs, parseCents(ev.target.value) || 0));
+  });
+
+  // ---------- rimborsi ----------
+  function settleSheet(x) {
+    const b = balance();
+    const isNew = !x;
+    const from = x ? x.from : (b > 0 ? "alice" : "matteo");
+    const cents = x ? x.cents : Math.abs(b);
+    openSheet({
+      title: isNew ? "Registra un rimborso" : "Rimborso",
+      body: `<p class="sub">${isNew ? "Segna i soldi che uno ha dato all'altro (bonifico, Satispay, contanti). Il saldo si aggiorna; non conta come spesa." : ""}</p>
+        <fieldset class="seg sheet-cats"><legend>Chi ha dato i soldi</legend>
+          <input type="radio" name="sfrom" id="sfrom-alice" value="alice"${from === "alice" ? " checked" : ""}><label for="sfrom-alice">Alice → Matteo</label>
+          <input type="radio" name="sfrom" id="sfrom-matteo" value="matteo"${from === "matteo" ? " checked" : ""}><label for="sfrom-matteo">Matteo → Alice</label>
+        </fieldset>
+        <div class="row2">
+          <div class="field"><label for="sAmt">Importo</label><div class="amount-wrap"><span>€</span><input id="sAmt" type="text" inputmode="decimal" value="${cents ? centsStr(cents) : ""}" placeholder="0,00"></div></div>
+          <div class="field"><label for="sDate">Data</label><input id="sDate" type="date" value="${x ? x.date : todayStr}"></div>
+        </div>`,
+      saveLabel: isNew ? "Registra rimborso" : "Salva",
+      onSave: () => {
+        const c = parseCents($("sAmt").value);
+        if (c === null) { showErr("sheetErr", "Scrivi un importo valido, ad esempio 20,00."); return false; }
+        const date = $("sDate").value;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr("sheetErr", "Scegli la data."); return false; }
+        const fr = picked("sfrom") || from;
+        const rec = { id: x ? x.id : newId("r"), date, cents: c, from: fr, to: otherOf(fr), createdAt: x ? x.createdAt : Date.now() };
+        settles = x ? settles.map(s => s.id === x.id ? rec : s) : [...settles, rec];
+        saveSettles(); render();
+        toast(`Rimborso registrato. ${balanceText(balance()).t}`);
+      },
+      dangerLabel: x ? "Elimina rimborso" : undefined,
+      onDanger: x ? () => { settles = settles.filter(s => s.id !== x.id); saveSettles(); render(); toast("Rimborso eliminato"); } : undefined
+    });
+  }
+  function editSettle(id) { const x = settles.find(s => s.id === id); if (x) settleSheet(x); }
+  $("settleBtn").addEventListener("click", () => settleSheet(null));
 
   $("prev").addEventListener("click", () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } syncDate(); render(); });
   $("next").addEventListener("click", () => { viewM++; if (viewM > 11) { viewM = 0; viewY++; } syncDate(); render(); });
@@ -1242,7 +1505,7 @@ body.noscroll { overflow: hidden; }
         const img = await prepareImage(files[i]);
         const { data } = await ocrWorker.recognize(img);
         if (cancelled) break;
-        found.push(...SpeseParse.parseReceipt(data.text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) })));
+        found.push(...SpeseParse.parseReceipt(data.text, new Date()).map(o => ({ ...o, opt: lastOpt(), cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) })));
       }
       if (cancelled) return;
       draft = found;
@@ -1264,7 +1527,7 @@ body.noscroll { overflow: hidden; }
     const text = $("quickText").value.trim();
     if (!text) { showErr("quickErr", "Detta o scrivi almeno una spesa, per esempio \"pizzeria 38 euro\"."); $("quickText").focus(); return; }
     showErr("quickErr", ""); micHint("");
-    draft = SpeseParse.parseText(text, new Date()).map(o => ({ ...o, cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) }));
+    draft = SpeseParse.parseText(text, new Date(), { me }).map(o => ({ ...o, opt: optFromParsed(o), cat: matchCustom(o.note) || (CAT[o.cat] && !CAT[o.cat].fixedOnly ? o.cat : FALLBACK()) }));
     if (!draft.length) showErr("quickErr", "Non ho trovato importi. Dì la spesa con la cifra, per esempio \"supermercato 62 e 40\".");
     renderReview();
   }
@@ -1322,6 +1585,12 @@ body.noscroll { overflow: hidden; }
   });
 
   // ---------- revisione prima di salvare ----------
+  function optFromParsed(o) {
+    if (!o.payer && !o.split) return lastOpt();
+    const payer = o.payer || optToPS(lastOpt()).payer;
+    if (payer === "comune" || !me) return "comune";
+    return psToOpt(payer, o.split || "meta");
+  }
   function saveLabel() {
     const tot = draft.reduce((a, o) => a + o.cents, 0);
     $("saveAllBtn").textContent = `Aggiungi ${draft.length === 1 ? "spesa" : draft.length + " spese"} · ${fmt(tot)}`;
@@ -1339,6 +1608,7 @@ body.noscroll { overflow: hidden; }
       <div class="line2">
         <input id="rv-date-${i}" data-i="${i}" data-f="date" type="date" value="${o.date}" aria-label="Data">
         <select id="rv-cat-${i}" data-i="${i}" data-f="cat" aria-label="Categoria">${VAR_CATS.map(c => `<option value="${c.k}"${c.k === o.cat ? " selected" : ""}>${c.l}</option>`).join("")}</select>
+        ${isPers() ? "" : `<select class="rv-split" id="rv-split-${i}" data-i="${i}" data-f="opt" aria-label="Chi ha pagato">${(me ? SPLIT_OPTS : ["comune"]).map(x => `<option value="${x}"${x === (o.opt || lastOpt()) ? " selected" : ""}>${esc(optLabel(x))}</option>`).join("")}</select>`}
       </div>
     </li>`).join("");
     saveLabel();
@@ -1363,7 +1633,9 @@ body.noscroll { overflow: hidden; }
     if (!list.length) return;
     list.forEach((o, n) => {
       const id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      items.set(id, { id, date: o.date, month: o.date.slice(0, 7), cents: o.cents, cat: o.cat, note: (o.note || "").trim(), createdAt: Date.now() + n });
+      const rec = { id, date: o.date, month: o.date.slice(0, 7), cents: o.cents, cat: o.cat, note: (o.note || "").trim(), createdAt: Date.now() + n };
+      if (!isPers()) { const opt = o.opt || lastOpt(); Object.assign(rec, optToPS(opt)); rememberOpt(opt); }
+      items.set(id, rec);
     });
     saveItems();
     const first = list[0].date.split("-").map(Number);
@@ -1375,7 +1647,7 @@ body.noscroll { overflow: hidden; }
 
   // ---------- backup ----------
   $("exportBtn").addEventListener("click", () => {
-    const data = { app: "spese-mensili", version: 1, sezione: space, exportedAt: new Date().toISOString(), items: [...items.values()], fixed, categories: custom };
+    const data = { app: "spese-mensili", version: 1, sezione: space, exportedAt: new Date().toISOString(), items: [...items.values()], fixed, categories: custom, rimborsi: settles };
     const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = `backup-spese-${space === "personali" ? "personali" : "coppia"}-${todayStr}.json`;
@@ -1396,6 +1668,11 @@ body.noscroll { overflow: hidden; }
       if (Array.isArray(data.categories)) {
         const ck = new Set(custom.map(x => x.k));
         for (const c of data.categories) if (c && c.k && c.l && !ck.has(c.k) && custom.length < maxCustom()) custom.push(c);
+      }
+      if (Array.isArray(data.rimborsi)) {
+        const sk = new Set(settles.map(x => x.id));
+        for (const r of data.rimborsi) if (r && r.id && typeof r.cents === "number" && !sk.has(r.id)) settles.push(r);
+        writeLS(LS_SETTLE, settles);
       }
       saveItems(); saveFixed(); saveCats(); renderCatPick();
       render(); toast(`Ripristinate ${added} spese`);
@@ -1422,6 +1699,7 @@ body.noscroll { overflow: hidden; }
     for (const [id, r] of items) out["i:" + id] = r;
     for (const f of fixed) out["f:" + f.id] = f;
     for (const c of custom) out["c:" + c.k] = c;
+    for (const r of settles) out["r:" + r.id] = r;
     return out;
   }
   const fmtCode = c => c.match(/.{1,4}/g).join("-");
@@ -1467,6 +1745,7 @@ body.noscroll { overflow: hidden; }
         if (kind === "i:" && items.has(id)) { items.delete(id); changed = true; }
         if (kind === "f:" && fixed.some(f => f.id === id)) { fixed = fixed.filter(f => f.id !== id); changed = true; }
         if (kind === "c:" && custom.some(c => c.k === id)) { custom = custom.filter(c => c.k !== id); changed = true; }
+        if (kind === "r:" && settles.some(r => r.id === id)) { settles = settles.filter(r => r.id !== id); changed = true; }
         delete sync.synced[key];
         continue;
       }
@@ -1478,6 +1757,9 @@ body.noscroll { overflow: hidden; }
       } else if (kind === "c:") {
         const i = custom.findIndex(c => c.k === id);
         if (i < 0) { custom.push(d); changed = true; } else if (stable(custom[i]) !== js) { custom[i] = d; changed = true; }
+      } else if (kind === "r:") {
+        const i = settles.findIndex(r => r.id === id);
+        if (i < 0) { settles.push(d); changed = true; } else if (stable(settles[i]) !== js) { settles[i] = d; changed = true; }
       }
       sync.synced[key] = js;
       if (!sync.cursor || row.aggiornato > sync.cursor) sync.cursor = row.aggiornato;
@@ -1513,7 +1795,7 @@ body.noscroll { overflow: hidden; }
       const changed = applyRemote(rows);
       saveSync();
       if (changed) {
-        writeLS(LS_ITEMS, [...items.values()]); fixed = normFixed(fixed); writeLS(LS_FIXED, fixed); writeLS(LS_CATS, custom);
+        writeLS(LS_ITEMS, [...items.values()]); fixed = normFixed(fixed); writeLS(LS_FIXED, fixed); writeLS(LS_CATS, custom); writeLS(LS_SETTLE, settles);
         rebuildCats(); renderCatPick(); render();
       }
       setSyncState("ok");
@@ -1544,6 +1826,10 @@ body.noscroll { overflow: hidden; }
       ? "Salvalo in un posto sicuro, per esempio in una nota. Non mandarlo a nessuno: chi lo ha può vedere le tue spese personali."
       : "Chi ha il codice vede e modifica le spese: mandalo solo all'altra persona. Lei apre l'app, va su Condivisione, lo incolla in \"Hai già un codice?\" e tocca Entra.";
     $("recoverForm").hidden = !pers;
+    $("meLine").hidden = pers;
+    $("meLine").innerHTML = me
+      ? `Su questo telefono sei <b>${PEOPLE[me]}</b>. <button type="button" class="link-btn" data-set-me="${otherOf(me)}">Sono ${PEOPLE[otherOf(me)]}</button>`
+      : `Chi usa questo telefono? <button type="button" class="link-btn" data-set-me="matteo">Matteo</button> · <button type="button" class="link-btn" data-set-me="alice">Alice</button>`;
     $("shareLeave").hidden = pers;
     $("shareOff").hidden = !!sync.code;
     $("shareOn").hidden = !sync.code;
@@ -1646,7 +1932,7 @@ body.noscroll { overflow: hidden; }
   $("sp-personali").addEventListener("click", () => switchSpace("personali"));
 
   // ---------- aggiornamento dell'app ----------
-  const APP_VERSION = "1.5";
+  const APP_VERSION = "1.6";
   $("appVersion").textContent = "Versione " + APP_VERSION;
   async function checkUpdate(manual) {
     const btn = $("updateBtn");
